@@ -1,0 +1,46 @@
+# CSViewer will be used as a console for Event Log Collector. Scheduled Tasks will collect events to a repo.
+# This Script Collects the Windows PowerShell Event Log; Event IDs 400, 403, 600, 800.
+
+# Define the script to be run by the scheduled task
+$scriptContent = @"
+# Define the time range for the logs
+\$startTime = (Get-Date).AddHours(-24)  # Last 24 hours
+\$endTime = Get-Date
+
+# Get the event logs
+\$events = Get-WinEvent -FilterHashtable @{
+    LogName = 'Windows Powershell'
+    StartTime = \$startTime
+    EndTime = \$endTime
+    Id = 400, 403, 600, 800
+}
+
+# Export the event logs to a CSV file
+\$csvPath = "C:\Reports\Powershell1.csv"
+\$events | Select-Object TimeCreated, Id, LevelDisplayName, Message | Export-Csv -Path \$csvPath -NoTypeInformation
+"@
+
+# Define the path to save the PowerShell script
+$scriptPath = "C:\Scripts\PowershellEventLogReport.ps1"
+
+# Ensure the script directory exists
+$scriptDir = [System.IO.Path]::GetDirectoryName($scriptPath)
+if (-not (Test-Path -Path $scriptDir)) {
+    New-Item -Path $scriptDir -ItemType Directory | Out-Null
+}
+
+# Save the script content to the file
+Set-Content -Path $scriptPath -Value $scriptContent
+
+# Define the scheduled task action
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
+
+# Define the trigger to run daily at a specific time (e.g., 2:00 AM)
+$trigger = New-ScheduledTaskTrigger -Daily -At 2:00AM
+
+# Define the principal to run the task (optional: run with highest privileges)
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+# Register the scheduled task
+$taskName = "DailyPowershellEventLogReport"
+Register-ScheduledTask -Action $action -Trigger $trigger -Principal $principal -TaskName $taskName -Description "Daily PowerShell Event Log Report"
